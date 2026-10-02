@@ -20,11 +20,12 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::fmat::FMat;
-use crate::random::Mt19937;
+use rand::Rng;
+use rand_chacha::ChaCha8Rng;
 use std::collections::BTreeSet;
 
 /// Port of `kmeans_init(X, K, rng)` in harmony.cpp.
-pub fn kmeans_init(x: &FMat, k: usize, rng: &mut Mt19937) -> FMat {
+pub fn kmeans_init(x: &FMat, k: usize, rng: &mut ChaCha8Rng) -> FMat {
     let n = x.ncols;
     let d = x.nrows;
 
@@ -32,7 +33,7 @@ pub fn kmeans_init(x: &FMat, k: usize, rng: &mut Mt19937) -> FMat {
 
     // First pass: uniform random column selection.
     for i in 0..k {
-        let mut idx = (rng.uniform_real_01() * n as f32).round() as i64;
+        let mut idx = (rng.random::<f32>() * n as f32).round() as i64;
         if idx >= n as i64 {
             idx = n as i64 - 1;
         }
@@ -71,7 +72,7 @@ pub fn kmeans_init(x: &FMat, k: usize, rng: &mut Mt19937) -> FMat {
         // random_numbers: N draws of uniform01; prob = -log(rn) / (dist + 1e-10).
         let mut prob = vec![0.0f32; n];
         for j in 0..n {
-            let rn = rng.uniform_real_01();
+            let rn = rng.random::<f32>();
             prob[j] = -rn.ln() / (distances[j] + 1e-10f32);
         }
 

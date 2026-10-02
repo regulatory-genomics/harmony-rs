@@ -11,7 +11,9 @@
 
 use crate::fmat::FMat;
 use crate::harmony::kmeans::kmeans_init;
-use crate::random::Mt19937;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use std::fmt;
 
 pub mod cpp_ostream {
@@ -123,7 +125,7 @@ pub struct Harmony {
     pub objective_kmeans_cross: Vec<f32>,
     pub kmeans_rounds: Vec<usize>,
 
-    pub rng: Mt19937,
+    pub rng: ChaCha8Rng,
 }
 
 impl Harmony {
@@ -191,7 +193,7 @@ impl Harmony {
             objective_kmeans_entropy: Vec::new(),
             objective_kmeans_cross: Vec::new(),
             kmeans_rounds: Vec::new(),
-            rng: Mt19937::new(random_state),
+            rng: ChaCha8Rng::seed_from_u64(random_state as u64),
         };
 
         h.z_corr = h.z_orig.normalise_cols2();
@@ -570,7 +572,7 @@ impl Harmony {
     fn update_r(&mut self) -> Result<(), HarmonyError> {
         let n = self.n;
         let mut indices_vec: Vec<usize> = (0..n).collect();
-        self.rng.shuffle(&mut indices_vec);
+        indices_vec.shuffle(&mut self.rng);
 
         // reverse_index[update_order[i]] = i
         let mut reverse_index = vec![0usize; n];

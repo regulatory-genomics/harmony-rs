@@ -229,6 +229,12 @@ fn test_objective_convergence() {
 }
 
 /// Port of `test_objective_increase_does_not_stop_harmony`.
+///
+/// Verifies that harmony does *not* stop early when the objective rises:
+/// it should still run all `max_iter_harmony` iterations. Under the ChaCha8Rng
+/// backend the default seed's trajectory converges in one iteration, so we pin
+/// `random_state: 42`, whose trajectory shows an objective increase between
+/// iterations 0 and 1 yet still completes both iterations (len == 3).
 #[test]
 fn test_objective_increase_does_not_stop_harmony() {
     let (data_mat, meta_data) = optimizer_case();
@@ -242,6 +248,7 @@ fn test_objective_increase_does_not_stop_harmony() {
         max_iter_kmeans: 1,
         epsilon_cluster: 0.0,
         epsilon_harmony: 0.01,
+        random_state: 42,
         ..RunHarmonyArgs::python_defaults(&data_mat, 6, 2, &meta_data, vec!["batch".to_string()])
     })
     .expect("run_harmony failed");

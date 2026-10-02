@@ -13,8 +13,15 @@ reinterpreted without explicit user approval.
 > relaxed to **golden-gate parity**: all five differential golden tests must
 > pass (see `docs/differential-gates.md`); bit-level equality inside k-means and
 > the linear-algebra kernels is no longer required. This enables the `faer`
-> integration below. The RNG stream, discrete behavior, and error semantics
-> remain exact.
+> integration below.
+>
+> **Amendment 2 (2026-10-02, user-approved).** The RNG was replaced with Rust's
+> own `ChaCha8Rng` (seeded from `random_state`) — see "Same RNG" below —
+> so the RNG stream is no longer `std::mt19937`-compatible. The differential
+> fixtures were reframed as **self-goldens** (generated from the Rust port
+> itself) with **statistical-quality** gates replacing point-wise parity against
+> Python's mt19937-derived output. The requirements and acceptance criteria
+> below are amended accordingly.
 
 ## Scope
 
@@ -34,13 +41,12 @@ harmonypy Python package **at the library API level**:
    the R harmony2 package): identical iteration structure, block updates, ridge
    correction paths (single-covariate closed-form inverse, multi-covariate
    `arma::inv`-equivalent), convergence checks, and state validation.
-2. **Same RNG stream**: `std::mt19937` seeded with `random_state`; libstdc++
-   `std::uniform_real_distribution<float>(0,1)` semantics (`generate_canonical<float,24>`:
-   one u32 draw per call, `float(u32)/2^32f`, clamped to `nextafter(1.0, 0.0)`
-   — *without consuming another draw* — when the rounded value reaches 1.0);
-   libstdc++ `std::shuffle` semantics
-   (paired Fisher-Yates branch + `__gen_two_uniform_ints` + Lemire `_S_nd<u64,u32>`
-   downscaling). Cross-validated against a compiled C++ probe.
+2. **Same RNG semantics**: a `ChaCha8Rng` (via `rand_chacha`) seeded from
+   `random_state` (`seed_from_u64(random_state as u64)`), so results are fully
+   deterministic and reproducible for a given seed. k-means initialization and
+   the block-update shuffle draw from it. This replaces the former
+   `std::mt19937` + libstdc++ emulation; the exact mt19937 *stream* is no longer
+   replicated (see Amendment 2).
 3. **Same k-means initialization semantics**: `arma::kmeans(Y, X, K, keep_existing, 1,
    false)` replicated (Armadillo 14.2.2 `km_iterate`: strict-< tie-breaking,
    sum/heft update, dead-mean resurrection heuristics). Distances are computed in
@@ -58,10 +64,12 @@ harmonypy Python package **at the library API level**:
    messages (same text, same `%g`-style float formatting).
 6. **Golden parity vs the R harmony2 reference fixtures** at the same thresholds the
    Python tests use (per-PC correlation ≥ 0.99 on pbmc_3500; LISI atol = 0.01).
-7. **Differential parity vs the installed Python backend** (harmonypy 2.0.2 wheel):
-   all differential runs must satisfy the gates in `docs/differential-gates.md`,
-   calibrated empirically and committed. Every differential discrepancy is a severe
-   blocker: fix it or make it fail loudly.
+7. **Self-golden + statistical-quality gates** (`tests/differential.rs`): the
+   committed fixtures are generated from the Rust port itself (deterministic for a
+   given seed) and the run must reproduce them within the committed tolerances
+   (see `docs/differential-gates.md`), plus the statistical-quality checks
+   (finite outputs, variance preservation, k-means progress, LISI batch mixing
+   not degrading).
 
 ## Tolerated variations (closed list)
 
@@ -71,27 +79,32 @@ Everything not listed here must be identical.
    OpenMP-independent accumulation orders) inside Armadillo; the Rust port uses
    `faer` (different blocked summation orders) and plain f32 loops. Bitwise equality
    is impossible; results must agree within the committed differential gates
-   (see `docs/differential-gates.md`), which are far tighter than the Python
-   suite's statistical thresholds. Empirically, switching the hot products from
-   plain loops to `faer` left every gate margin essentially unchanged (z_corr
-   ≈ 5e-6, y ≈ 3e-6, medium objective ≈ 3e-3 rel), and the k-means stage outputs
-   still match the compiled C++ probe bit-exactly on the medium fixture.
-2. **Logging transport.** Python logs via `logging`; Rust via the `log` crate facade.
+   (see `docs/differential-gates.md`). Because faer's multithreaded GEMM reduces
+   in a scheduling-dependent order, consecutive runs can differ by an f64 ulp, so
+   the self-golden lock-in uses a tight absolute bound (~5e-4) rather than exact
+   equality; `kmeans_rounds` is discrete and still matches exactly.
+2. **RNG-driven divergence from the Python reference.** Replacing `mt19937` with
+   `ChaCha8Rng` changes the (random) k-means initialization and block-update
+   shuffle, so the corrected embedding is an equivalent-quality but quantitatively
+   different solution than Python's mt19937-based output. This is why the fixtures
+   are now self-goldens validated by statistical-quality checks rather than
+   point-wise comparison against Python (see Amendment 2).
+3. **Logging transport.** Python logs via `logging`; Rust via the `log` crate facade.
    Message *content* is preserved; formatting/timestamps differ (informational only).
-3. **`ncores` parameter.** Controls BLAS thread count via environment variables in the
+4. **`ncores` parameter.** Controls BLAS thread count via environment variables in the
    Python layer; in the Rust library it is superseded by `faer`'s rayon-backed
    parallelism (the global rayon pool). Omitted from the Rust API.
-4. **Input container types.** Python accepts pandas/DataFrame/dict-likes; the Rust API
+5. **Input container types.** Python accepts pandas/DataFrame/dict-likes; the Rust API
    takes concrete slice/`HashMap` inputs with the same semantics (numeric-column
    extraction of `select_dtypes` is the caller's responsibility).
-5. **k-means total failure corner case.** If Armadillo's `km_iterate` resurrection
+6. **k-means total failure corner case.** If Armadillo's `km_iterate` resurrection
    heuristic fails (`live_gs` empty), the C++ silently produces a degenerate state;
    the Rust port returns a loud error. (Cannot be exercised by the upstream test
    suite; documented per playbook exception rules.)
-6. **Armadillo k-means dead-mean "random last resort"** uses Armadillo's internal RNG;
+7. **Armadillo k-means dead-mean "random last resort"** uses Armadillo's internal RNG;
    the Rust port uses its own generator. Only reachable when a cluster dies and no
    live cluster has ≥ 2 cells — not reachable in the test fixtures.
-7. **Objective summation order.** The C++ sums the two large objective terms via
+8. **Objective summation order.** The C++ sums the two large objective terms via
    OpenBLAS `sdot`; the port uses Armadillo's dual-accumulator order, which carries
    ≈ 3e-3 relative f32 accumulation error on the 6.9M-element medium-config sums.
    The formula itself is validated in f64 (see `docs/differential-gates.md`); the
@@ -100,10 +113,10 @@ Everything not listed here must be identical.
 ## Acceptance criteria
 
 - 100% of the ported Python tests pass in Rust (`cargo test`).
-- Differential harness (`tests/differential.rs`) passes
-  with zero unexplained discrepancies against the installed Python backend.
-- RNG module matches the compiled C++ probe output exactly (raw u32 stream,
-  uniform_real draws, shuffles).
+- Self-golden + statistical-quality harness (`tests/differential.rs`) passes with no
+  tolerated-gate violations; `kmeans_rounds` matches the committed fixtures exactly.
+- RNG is deterministic for a given `random_state`: same seed → same result (modulo
+  faer's ulp-level GEMM scheduling noise), different seeds → different results.
 - `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` clean; CI workflow
   runs fmt, clippy, tests, and the differential harness.
 - Performance: `tests/bench.rs` (run with `cargo test --release --test bench --

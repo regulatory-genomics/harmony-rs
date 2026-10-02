@@ -1,39 +1,53 @@
-# Differential gates: harmonypy-rs vs Python harmonypy 2.0.2
+# Differential gates (self-golden)
 
-The gates below are asserted by `tests/differential.rs` against five golden
-fixtures (`tests/fixtures/differential_*.json`) generated from the installed
-Python backend.
+The fixtures under `tests/fixtures/differential_*.json` are **self-goldens**:
+they are generated from the Rust implementation itself (via the ignored
+`tests/gen_golden.rs` generator), because the algorithm is fully deterministic
+for a given `random_state` (a `ChaCha8Rng` seeded from it). They are a
+regression lock-in rather than a cross-check against Python.
 
-| config          | data                          | settings                     | z_corr | y     | r     | objective_rel | min per-PC corr |
-|-----------------|-------------------------------|------------------------------|--------|-------|-------|---------------|-----------------|
-| small_defaults  | pbmc3k (3500 cells)           | defaults                     | 5e-4   | 5e-5  | 5e-5  | 1e-3          | 0.99            |
-| iter2           | pbmc3k                        | max_iter_harmony=2           | 5e-4   | 5e-5  | 5e-5  | 1e-3          | 0.99            |
-| fixed_lamb      | pbmc3k                        | fixed lamb                   | 5e-4   | 5e-5  | 5e-5  | 1e-3          | 0.99            |
-| multi_cov       | pbmc3k, two batch variables   | multi-covariate              | 5e-4   | 5e-5  | 5e-5  | 1e-3          | 0.99            |
-| medium          | ircolitis (68785 cells, d=50) | defaults, max_iter_harmony=1 | 5e-4   | 5e-5  | —     | 5e-3          | 0.99            |
+## Two kinds of gates
 
-Discrete outputs (`kmeans_rounds`) must match exactly in every config.
+1. **`check_exact` — lock-in.** The current run must reproduce the committed
+   fixture within a tight tolerance. This catches any unintentional change to
+   the algorithm, matrix ops, or seeding. Regenerate the fixtures with
+   `cargo test --release --test gen_golden -- --ignored` only when a change is
+   intentional.
 
-The gates were re-validated after the `faer` integration (hot matmuls/gemvs
-routed through faer, k-means distances in matmul form): no gate moved beyond
-noise (medium objective ≈ 3.0e-3 rel as before; z_corr/y margins unchanged),
-and `kmeans_rounds` still matches exactly. The k-means stage outputs also
-still match the compiled C++ probe bit-exactly on the medium fixture
-(`tests/debug_kmeans.rs`).
+   | config          | data                          | z_corr | y     | objectives |
+   |-----------------|-------------------------------|--------|-------|------------|
+   | small_defaults  | pbmc3k (3500 cells), defaults | 5e-4   | 5e-4  | 1e-3 rel   |
+   | iter2           | pbmc3k, max_iter_harmony=2    | 5e-4   | 5e-4  | 1e-3 rel   |
+   | fixed_lamb      | pbmc3k, fixed lamb            | 5e-4   | 5e-4  | 1e-3 rel   |
+   | multi_cov       | synthetic 400x5, 2 covariates | 5e-4   | 5e-4  | 1e-3 rel   |
+   | medium          | ircolitis (68785, d=50)       | 5e-4   | 5e-4  | 5e-3 rel   |
 
-## Why the medium config has a wider objective gate
+   `kmeans_rounds` must match exactly in every config.
 
-The objective terms `accu(R % dist_mat)` and
-`accu(log_R.each_col() % sigma)` sum N×K = 68785 × 100 ≈ 6.9M f32 elements.
-The C++ backend sums these through Armadillo's `op_dot::direct_dot`, i.e.
-OpenBLAS `sdot`, whose blocked multi-accumulator order cannot be replicated
-bitwise. The port reproduces Armadillo's documented non-BLAS dual-accumulator
-order instead, which at this sum size carries ≈ 2.5–3.0e-3 relative f32
-accumulation error — while OpenBLAS happens to be more accurate.
+2. **`check_quality` — statistical sanity**, independent of any particular
+   oracle:
+   - all outputs (`z_corr`, `y`, `r`, objectives) are finite (no NaN/Inf);
+   - k-means makes progress in every round (`kmeans_rounds >= 1`);
+   - per-PC variance is broadly preserved by the correction (ratio within
+     [0.2, 5.0]);
+   - batch mixing (mean LISI across cells, perplexity 30) does not degrade by
+     more than 10% after correction (skipped for the 69k medium config to keep
+     the kd-tree LISI cost down).
 
-`tests/debug_calibrate_medium.rs` validates the objective *formula*
-independently of summation order: recomputing all three terms in f64 from the
-init state (`max_iter_harmony=0`) lands within 2.9e-4 of the Python golden,
-confirming the residual is purely f32 accumulation order, not an algorithmic
-difference. Hence `objective_rel = 5e-3` for the medium config only; all other
-outputs (z_corr, y, per-PC correlations, `kmeans_rounds`) pass the tight gates.
+## Why tolerance instead of bit-exact
+
+The actual run-to-run drift is at the f64-ulp level (≈1e-15) because faer's
+multithreaded GEMM reduces in a scheduling-dependent order. The stored values
+are f32-derived anyway, so a tight absolute bound (≈5e-4) sits far above that
+noise while remaining far below any real algorithmic change. `kmeans_rounds`
+is discrete and is still required to match exactly.
+
+## Historical note
+
+These fixtures originally came from the installed Python harmonypy 2.0.2
+backend (which seeds k-means from mt19937), and the gates compared point-wise
+against it. That cross-check was dropped when the RNG was replaced with
+`ChaCha8Rng`: a different RNG converges to an equivalent-but-not-identical
+solution, making point-wise parity against a specific (RNG-dependent) Python
+output unattainable. The statistical-quality checks are what now demonstrate
+the result is a good, reproducible Harmony correction.

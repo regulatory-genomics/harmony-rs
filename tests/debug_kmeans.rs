@@ -7,7 +7,9 @@
 mod common;
 
 use harmony::fmat::FMat;
-use harmony::random::Mt19937;
+use rand::Rng;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use std::collections::BTreeSet;
 
 fn data_path(name: &str) -> String {
@@ -57,13 +59,13 @@ fn compare_kmeans_stages_medium() {
     }
     let z_norm = FMat::from_col_major(d, n, out).normalise_cols2();
 
-    let mut rng = Mt19937::new(0);
+    let mut rng = ChaCha8Rng::seed_from_u64(0);
 
     // ---- Stage 1 ----
     let mut y1 = FMat::zeros(d, k);
     let mut idxs = vec![];
     for i in 0..k {
-        let mut idx = (rng.uniform_real_01() * n as f32).round() as i64;
+        let mut idx = (rng.random::<f32>() * n as f32).round() as i64;
         if idx >= n as i64 {
             idx = n as i64 - 1;
         }
@@ -129,7 +131,7 @@ fn compare_kmeans_stages_medium() {
         }
         let mut prob = vec![0.0f32; n];
         for j in 0..n {
-            let rn = rng.uniform_real_01();
+            let rn = rng.random::<f32>();
             prob[j] = -rn.ln() / (distances[j] + 1e-10f32);
         }
         if i == 95 {

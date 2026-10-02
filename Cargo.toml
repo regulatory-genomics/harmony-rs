@@ -18,6 +18,8 @@ path = "src/lib.rs"
 [dependencies]
 faer = "0.24"
 log = "0.4"
+rand = "0.9"
+rand_chacha = "0.9"
 
 [dev-dependencies]
 flate2 = "1"

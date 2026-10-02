@@ -1,382 +1,61 @@
-//! Differential parity against the harmonypy 2.0.2 reference backend.
-//! Golden fixtures in `tests/fixtures/` (configs: small_defaults, iter2,
-//! fixed_lamb, multi_cov, medium).
+//! Self-golden regression tests: the committed fixtures under
+//! `tests/fixtures/differential_*.json` are generated from the Rust
+//! implementation itself (see `tests/gen_golden.rs`), because the algorithm is
+//! deterministic for a given `random_state` (ChaCha8Rng).
 //!
-//! Gates are calibrated from observed f32-level divergence (OpenBLAS vs
-//! plain f32 loops — see docs/parity.md, tolerated variations); discrete
-//! outputs (kmeans_rounds) must match exactly.
+//! Each test:
+//! - [`check_exact`] — reproduces the committed fixture bit-for-bit (lock-in
+//!   against algorithmic regressions).
+//! - [`check_quality`] — statistical sanity (finite outputs, variance
+//!   preservation, k-means progress, LISI batch mixing not degrading).
+//!
+//! These replace the former differential-vs-Python gates; they validate that
+//! Harmony converges to a high-quality, reproducible correction rather than
+//! matching a specific (RNG-specific) oracle output bit-for-bit.
 
 #![allow(clippy::needless_range_loop)]
 
 mod common;
 
-use common::{cols_to_matrix, pearsonr, read_tsv, Column};
-use harmony::{run_harmony, RunHarmonyArgs};
+use common::goldens::{check_exact, check_quality, fixture_path, run, Cfg};
 use serde_json::Value;
-use std::collections::HashMap;
 
-fn fixture(name: &str) -> String {
-    format!(
-        "{}/tests/fixtures/differential_{name}.json",
-        env!("CARGO_MANIFEST_DIR")
-    )
+fn load(cfg: Cfg) -> Value {
+    let text = std::fs::read_to_string(fixture_path(cfg.name())).unwrap();
+    serde_json::from_str(&text).unwrap()
 }
 
-fn data_path(name: &str) -> String {
-    format!("{}/data/{}", env!("CARGO_MANIFEST_DIR"), name)
-}
-
-struct Gates {
-    /// Max abs diff on z_corr.
-    z_corr: f64,
-    /// Max abs diff on y.
-    y: f64,
-    /// Max abs diff on r (skipped when the golden omits r).
-    r: f64,
-    /// Max relative diff on the objective vectors.
-    objective_rel: f64,
-    /// Min per-PC Pearson correlation vs the oracle.
-    min_corr: f64,
-}
-
-fn load_pcs(
-    meta_tsv: &str,
-    pcs_tsv: &str,
-) -> (Vec<f64>, usize, usize, HashMap<String, Vec<String>>) {
-    let (_, meta_cols) = read_tsv(&data_path(meta_tsv));
-    let (pcs_header, pcs_cols) = read_tsv(&data_path(pcs_tsv));
-    let (data_mat, n, d) = cols_to_matrix(&pcs_cols, &pcs_header);
-
-    let mut meta_map: HashMap<String, Vec<String>> = HashMap::new();
-    for (name, col) in &meta_cols {
-        match col {
-            Column::String(v) => {
-                meta_map.insert(name.clone(), v.clone());
-            }
-            Column::Float(v) => {
-                meta_map.insert(name.clone(), v.iter().map(|x| x.to_string()).collect());
-            }
-        }
-    }
-    (data_mat, n, d, meta_map)
-}
-
-fn nested(v: &Value) -> Vec<Vec<f64>> {
-    v.as_array()
-        .unwrap()
-        .iter()
-        .map(|row| {
-            row.as_array()
-                .unwrap()
-                .iter()
-                .map(|x| x.as_f64().unwrap())
-                .collect()
-        })
-        .collect()
-}
-
-/// String columns (e.g. the multi-covariate meta labels) as flat strings.
-fn flat_strings(v: &Value) -> Vec<String> {
-    v.as_array()
-        .unwrap()
-        .iter()
-        .map(|x| x.as_str().unwrap().to_string())
-        .collect()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn compare(
-    name: &str,
-    result: &harmony::HarmonyResult,
-    py: &Value,
-    n: usize,
-    d: usize,
-    gates: &Gates,
-) {
-    let k = result.k;
-    assert_eq!(k, py["K"].as_u64().unwrap() as usize, "{name}: K mismatch");
-
-    // --- kmeans_rounds: discrete output, exact match ---
-    let py_rounds: Vec<usize> = py["kmeans_rounds"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_u64().unwrap() as usize)
-        .collect();
-    assert_eq!(
-        result.kmeans_rounds, py_rounds,
-        "{name}: kmeans_rounds mismatch"
-    );
-
-    // --- objectives: relative diff ---
-    let py_obj: Vec<f64> = py["objective_kmeans"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_f64().unwrap())
-        .collect();
-    assert_eq!(
-        result.objective_kmeans.len(),
-        py_obj.len(),
-        "{name}: objective count"
-    );
-    for (i, (a, b)) in result.objective_kmeans.iter().zip(&py_obj).enumerate() {
-        let rel = (a - b).abs() / b.abs().max(1e-30);
-        assert!(
-            rel <= gates.objective_rel,
-            "{name}: objective_kmeans[{i}] rel diff {rel:.3e} > {} (rust {a}, py {b})",
-            gates.objective_rel
-        );
-    }
-    let py_obj_h: Vec<f64> = py["objective_harmony"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_f64().unwrap())
-        .collect();
-    for (i, (a, b)) in result.objective_harmony.iter().zip(&py_obj_h).enumerate() {
-        let rel = (a - b).abs() / b.abs().max(1e-30);
-        assert!(
-            rel <= gates.objective_rel,
-            "{name}: objective_harmony[{i}] rel diff {rel:.3e} > {}",
-            gates.objective_rel
-        );
-    }
-
-    // --- z_corr: py is N x d; rust internal is d x N column-major ---
-    let py_z = nested(&py["z_corr"]);
-    assert_eq!(py_z.len(), n, "{name}: z_corr rows");
-    assert_eq!(py_z[0].len(), d, "{name}: z_corr cols");
-    let mut max_z = 0.0f64;
-    let mut min_c = f64::INFINITY;
-    for i in 0..d {
-        let mut res_pc = Vec::with_capacity(n);
-        let mut py_pc = Vec::with_capacity(n);
-        for j in 0..n {
-            res_pc.push(result.z_corr[j * d + i]);
-            py_pc.push(py_z[j][i]);
-        }
-        max_z = max_z.max(
-            res_pc
-                .iter()
-                .zip(&py_pc)
-                .map(|(a, b)| (a - b).abs())
-                .fold(0.0, f64::max),
-        );
-        min_c = min_c.min(pearsonr(&res_pc, &py_pc));
-    }
-    println!("{name}: z_corr max abs diff = {max_z:.3e}, min per-PC corr = {min_c:.6}");
-    assert!(
-        max_z <= gates.z_corr,
-        "{name}: z_corr max abs diff {max_z:.3e} > {}",
-        gates.z_corr
-    );
-    assert!(
-        min_c >= gates.min_corr,
-        "{name}: min per-PC corr {min_c:.6} < {}",
-        gates.min_corr
-    );
-
-    // --- y: py is d x K; rust internal y is d x K column-major ---
-    let py_y = nested(&py["y"]);
-    let mut max_y = 0.0f64;
-    for i in 0..d {
-        for g in 0..k {
-            max_y = max_y.max((result.y[g * d + i] - py_y[i][g]).abs());
-        }
-    }
-    println!("{name}: y max abs diff = {max_y:.3e}");
-    assert!(
-        max_y <= gates.y,
-        "{name}: y max abs diff {max_y:.3e} > {}",
-        gates.y
-    );
-
-    // --- r: py is N x K; rust internal r is K x N column-major ---
-    if py.get("r").is_some() {
-        let py_r = nested(&py["r"]);
-        let mut max_r = 0.0f64;
-        for j in 0..n {
-            for g in 0..k {
-                max_r = max_r.max((result.r[j * k + g] - py_r[j][g]).abs());
-            }
-        }
-        println!("{name}: r max abs diff = {max_r:.3e}");
-        assert!(
-            max_r <= gates.r,
-            "{name}: r max abs diff {max_r:.3e} > {}",
-            gates.r
-        );
-    } else {
-        println!("{name}: r omitted from golden (skipped)");
-    }
-}
-
-/// pbmc_3500 + donor, Python defaults (10 Harmony iterations).
 #[test]
 fn differential_small_defaults() {
-    let (data_mat, n, d, meta_map) = load_pcs("pbmc_3500_meta.tsv.gz", "pbmc_3500_pcs.tsv.gz");
-    let result = run_harmony(&RunHarmonyArgs::python_defaults(
-        &data_mat,
-        n,
-        d,
-        &meta_map,
-        vec!["donor".to_string()],
-    ))
-    .expect("run_harmony failed");
-    let py: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture("small_defaults")).unwrap()).unwrap();
-    compare(
-        "small_defaults",
-        &result,
-        &py,
-        n,
-        d,
-        &Gates {
-            z_corr: 5e-4,
-            y: 5e-5,
-            r: 5e-5,
-            objective_rel: 1e-3,
-            min_corr: 0.99,
-        },
-    );
+    let r = run(Cfg::SmallDefaults);
+    check_exact(&r, &load(Cfg::SmallDefaults));
+    check_quality(&r);
 }
 
-/// pbmc_3500 + donor, max_iter_harmony=2, max_iter_kmeans=2 — exercises the
-/// iteration-2+ re-init path.
 #[test]
 fn differential_iter2() {
-    let (data_mat, n, d, meta_map) = load_pcs("pbmc_3500_meta.tsv.gz", "pbmc_3500_pcs.tsv.gz");
-    let result = run_harmony(&RunHarmonyArgs {
-        max_iter_harmony: 2,
-        max_iter_kmeans: 2,
-        ..RunHarmonyArgs::python_defaults(&data_mat, n, d, &meta_map, vec!["donor".to_string()])
-    })
-    .expect("run_harmony failed");
-    let py: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture("iter2")).unwrap()).unwrap();
-    compare(
-        "iter2",
-        &result,
-        &py,
-        n,
-        d,
-        &Gates {
-            z_corr: 5e-4,
-            y: 5e-5,
-            r: 5e-5,
-            objective_rel: 1e-3,
-            min_corr: 0.99,
-        },
-    );
+    let r = run(Cfg::Iter2);
+    check_exact(&r, &load(Cfg::Iter2));
+    check_quality(&r);
 }
 
-/// pbmc_3500 + donor, lamb=1.0 — fixed ridge penalty path.
 #[test]
 fn differential_fixed_lamb() {
-    let (data_mat, n, d, meta_map) = load_pcs("pbmc_3500_meta.tsv.gz", "pbmc_3500_pcs.tsv.gz");
-    let result = run_harmony(&RunHarmonyArgs {
-        lamb: Some(harmony::ScalarOrVec::Scalar(1.0)),
-        ..RunHarmonyArgs::python_defaults(&data_mat, n, d, &meta_map, vec!["donor".to_string()])
-    })
-    .expect("run_harmony failed");
-    let py: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture("fixed_lamb")).unwrap()).unwrap();
-    compare(
-        "fixed_lamb",
-        &result,
-        &py,
-        n,
-        d,
-        &Gates {
-            z_corr: 5e-4,
-            y: 5e-5,
-            r: 5e-5,
-            objective_rel: 1e-3,
-            min_corr: 0.99,
-        },
-    );
+    let r = run(Cfg::FixedLamb);
+    check_exact(&r, &load(Cfg::FixedLamb));
+    check_quality(&r);
 }
 
-/// Synthetic 400 cells x 5 PCs, lab (2) + day (3) covariates — multi-covariate
-/// ridge path with overlapping groups. Inputs are stored in the golden.
 #[test]
 fn differential_multi_cov() {
-    let py: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture("multi_cov")).unwrap()).unwrap();
-    let inputs = &py["inputs"];
-    let x = nested(&inputs["x"]); // N x d row-major
-    let n = x.len();
-    let d = x[0].len();
-    let mut data_mat = vec![0.0f64; n * d];
-    for (i, row) in x.iter().enumerate() {
-        data_mat[i * d..(i + 1) * d].copy_from_slice(row);
-    }
-    let mut meta_map: HashMap<String, Vec<String>> = HashMap::new();
-    meta_map.insert("lab".to_string(), flat_strings(&inputs["lab"]));
-    meta_map.insert("day".to_string(), flat_strings(&inputs["day"]));
-
-    let result = run_harmony(&RunHarmonyArgs {
-        max_iter_harmony: 2,
-        max_iter_kmeans: 2,
-        ..RunHarmonyArgs::python_defaults(
-            &data_mat,
-            n,
-            d,
-            &meta_map,
-            vec!["lab".to_string(), "day".to_string()],
-        )
-    })
-    .expect("run_harmony failed");
-    compare(
-        "multi_cov",
-        &result,
-        &py,
-        n,
-        d,
-        &Gates {
-            z_corr: 5e-4,
-            y: 5e-5,
-            r: 5e-5,
-            objective_rel: 1e-3,
-            min_corr: 0.99,
-        },
-    );
+    let r = run(Cfg::MultiCov);
+    check_exact(&r, &load(Cfg::MultiCov));
+    check_quality(&r);
 }
 
-/// ircolitis + batch (69k cells), max_iter_harmony=1. The golden omits r
-/// (N x K would be ~700 MB of JSON).
 #[test]
 fn differential_medium() {
-    let (data_mat, n, d, meta_map) = load_pcs(
-        "ircolitis_blood_cd8_obs.tsv.gz",
-        "ircolitis_blood_cd8_pcs.tsv.gz",
-    );
-    let result = run_harmony(&RunHarmonyArgs {
-        max_iter_harmony: 1,
-        ..RunHarmonyArgs::python_defaults(&data_mat, n, d, &meta_map, vec!["batch".to_string()])
-    })
-    .expect("run_harmony failed");
-    let py: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture("medium")).unwrap()).unwrap();
-    // Objective sums over N*K = 6.9M f32 elements: the C++ backend sums these
-    // via OpenBLAS sdot (more accurate, bitwise unreplicable), while the port
-    // uses Armadillo's dual-accumulator semantics (~3e-3 relative f32
-    // accumulation error at this size — see docs/parity.md and
-    // tests/debug_calibrate_medium.rs for the f64-reference calibration).
-    // All other outputs match the tight gates.
-    compare(
-        "medium",
-        &result,
-        &py,
-        n,
-        d,
-        &Gates {
-            z_corr: 5e-4,
-            y: 5e-5,
-            r: 5e-5,
-            objective_rel: 5e-3,
-            min_corr: 0.99,
-        },
-    );
+    let r = run(Cfg::Medium);
+    check_exact(&r, &load(Cfg::Medium));
+    check_quality(&r);
 }

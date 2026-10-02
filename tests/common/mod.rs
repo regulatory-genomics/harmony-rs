@@ -4,6 +4,8 @@
 
 #![allow(dead_code)]
 
+pub mod goldens;
+
 use std::collections::HashMap;
 use std::io::Read;
 
