@@ -1,0 +1,36 @@
+[package]
+name = "harmonypy-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Batch correction for single-cell data using the Harmony algorithm. Pure-Rust port of the harmonypy Python package (v2.0.2)."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = ["Kamil Slowikowski <kslowikowski@gmail.com>", "John Arevalo <johnarevalo@gmail.com>"]
+keywords = ["harmony", "batch-correction", "integration", "single-cell", "bioinformatics"]
+categories = ["science", "algorithms"]
+repository = "https://github.com/slowkow/harmonypy"
+
+[package.metadata.python_source]
+name = "harmonypy"
+version = "2.0.2"
+location = "../harmonypy"
+
+[lib]
+name = "harmonypy"
+path = "src/lib.rs"
+
+[dependencies]
+log = "0.4"
+
+[dev-dependencies]
+flate2 = "1"
+csv = "1"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[workspace]
