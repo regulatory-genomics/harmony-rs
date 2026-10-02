@@ -6,21 +6,17 @@ rust-version = "1.75"
 description = "Batch correction for single-cell data using the Harmony algorithm. Pure-Rust port of the harmonypy Python package (v2.0.2)."
 readme = "README.md"
 license = "GPL-3.0-or-later"
-authors = ["Kamil Slowikowski <kslowikowski@gmail.com>", "John Arevalo <johnarevalo@gmail.com>"]
+authors = ["Kai Zhang <zhangkai33@westlake.edu.cn>"]
 keywords = ["harmony", "batch-correction", "integration", "single-cell", "bioinformatics"]
 categories = ["science", "algorithms"]
-repository = "https://github.com/slowkow/harmonypy"
-
-[package.metadata.python_source]
-name = "harmonypy"
-version = "2.0.2"
-location = "../harmonypy"
+repository = "https://github.com"
 
 [lib]
 name = "harmonypy"
 path = "src/lib.rs"
 
 [dependencies]
+faer = "0.24"
 log = "0.4"
 
 [dev-dependencies]

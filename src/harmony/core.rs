@@ -722,6 +722,10 @@ impl Harmony {
         self.z_corr = self.z_orig.clone();
         let multiple_covariates = self.b_vec.len() > 1;
         let k = self.k;
+        // Per-batch cell indices, built once (they only depend on the data).
+        let batch_cells: Vec<Vec<usize>> = (0..self.b)
+            .map(|bidx| self.batch_index[bidx].iter().map(|&v| v as usize).collect())
+            .collect();
 
         for kx in 0..k {
             // avg_R = O.row(k).t() / batch_sizes  (B-length vector)
@@ -907,15 +911,11 @@ impl Harmony {
 
             if all_qualify {
                 for bidx in 0..self.b {
-                    let idx: Vec<usize> =
-                        self.batch_index[bidx].iter().map(|&v| v as usize).collect();
-                    self.correct_block(kx, bidx + 1, &idx, &rk);
+                    self.correct_block(kx, bidx + 1, &batch_cells[bidx], &rk);
                 }
             } else {
                 for (i, &bidx) in keep.iter().enumerate() {
-                    let idx: Vec<usize> =
-                        self.batch_index[bidx].iter().map(|&v| v as usize).collect();
-                    self.correct_block(kx, i + 1, &idx, &rk);
+                    self.correct_block(kx, i + 1, &batch_cells[bidx], &rk);
                 }
             }
         }

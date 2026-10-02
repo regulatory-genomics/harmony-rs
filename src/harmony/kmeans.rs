@@ -44,17 +44,29 @@ pub fn kmeans_init(x: &FMat, k: usize, rng: &mut Mt19937) -> FMat {
     // (`std::set<unsigned> chosen` — ordered set).
     let mut chosen: BTreeSet<usize> = BTreeSet::new();
     for i in 0..k {
-        // distances = |2 * (1 - Y.col(i).t() * X)| as a column (1 x N row).
+        // distances = |2 * (1 - Y.col(i).t() * X)| as a column (1 x N row):
+        // via faer (gemv) when large enough, else a plain sequential loop.
         let yt = y.col(i);
         let mut distances = vec![0.0f32; n];
-        for j in 0..n {
-            let xc = x.col(j);
-            let mut acc = 0.0f32;
-            for dd in 0..d {
-                acc += yt[dd] * xc[dd];
+        if n * d >= crate::fmat::FAER_MIN_ELEMS {
+            let yi = faer::MatRef::from_column_major_slice(yt, d, 1);
+            let xm = faer::MatRef::from_column_major_slice(&x.data, d, n);
+            let dots: faer::Mat<f32> = xm.transpose() * yi;
+            let dot = dots.col_as_slice(0);
+            for (j, dist) in distances.iter_mut().enumerate() {
+                let t = 2.0f32 * (1.0f32 - dot[j]);
+                *dist = t.abs();
             }
-            let t = 2.0f32 * (1.0f32 - acc);
-            distances[j] = t.abs();
+        } else {
+            for (j, dist) in distances.iter_mut().enumerate() {
+                let xc = x.col(j);
+                let mut acc = 0.0f32;
+                for dd in 0..d {
+                    acc += yt[dd] * xc[dd];
+                }
+                let t = 2.0f32 * (1.0f32 - acc);
+                *dist = t.abs();
+            }
         }
 
         // random_numbers: N draws of uniform01; prob = -log(rn) / (dist + 1e-10).
@@ -103,19 +115,42 @@ fn km_iterate_once(means: &mut FMat, x: &FMat) -> bool {
     let mut acc_hefts = vec![0u32; n_gaus];
     let mut last_indx = vec![0usize; n_gaus];
 
-    // Assignment pass (old_means = current means).
+    // Assignment pass (old_means = current means). Distances are computed in
+    // matmul form through faer: ||x_i - m_g||^2 = ||x_i||^2 - 2*m_g.x_i + ||m_g||^2,
+    // with M^T X (n_gaus x n_cells) as one parallel sgemm. Argmin keeps the
+    // strict-< first-minimum tie-breaking.
     let old_means = means.clone();
+    let mt = old_means.mul_trans_a(x); // n_gaus x n_cells
+    let mut x_norms = vec![0.0f32; x_n_cols];
+    for (i, col) in x_norms.iter_mut().enumerate() {
+        let xc = x.col(i);
+        let mut acc = 0.0f32;
+        for &v in xc {
+            acc += v * v;
+        }
+        *col = acc;
+    }
+    let mut m_norms = vec![0.0f32; n_gaus];
+    for (g, norm) in m_norms.iter_mut().enumerate() {
+        let mc = old_means.col(g);
+        let mut acc = 0.0f32;
+        for &v in mc {
+            acc += v * v;
+        }
+        *norm = acc;
+    }
     for i in 0..x_n_cols {
-        let x_col = x.col(i);
+        let xi2 = x_norms[i];
         let mut min_dist = f32::INFINITY;
         let mut best_g = 0usize;
         for g in 0..n_gaus {
-            let dist = sq_distance_paired(x_col, old_means.col(g));
+            let dist = m_norms[g] - 2.0 * mt.get(g, i) + xi2;
             if dist < min_dist {
                 min_dist = dist;
                 best_g = g;
             }
         }
+        let x_col = x.col(i);
         for dd in 0..n_dims {
             acc_means[best_g * n_dims + dd] += x_col[dd];
         }
@@ -178,29 +213,6 @@ fn km_iterate_once(means: &mut FMat, x: &FMat) -> bool {
 /// "randomly selected sample (last resort)" dead-mean recovery path.
 fn rand_last_resort(n: usize) -> usize {
     0 % n.max(1)
-}
-
-/// Port of Armadillo `distance<eT, uword(1)>::eval` — two-pass paired squared
-/// Euclidean distance in f32 (gmm_misc_meat.hpp).
-fn sq_distance_paired(a: &[f32], b: &[f32]) -> f32 {
-    let n = a.len();
-    let mut acc1 = 0.0f32;
-    let mut acc2 = 0.0f32;
-    let mut i = 0usize;
-    let mut j = 1usize;
-    while j < n {
-        let tmp_i = a[i] - b[i];
-        let tmp_j = a[j] - b[j];
-        acc1 += tmp_i * tmp_i;
-        acc2 += tmp_j * tmp_j;
-        i += 2;
-        j += 2;
-    }
-    if i < n {
-        let tmp_i = a[i] - b[i];
-        acc1 += tmp_i * tmp_i;
-    }
-    acc1 + acc2
 }
 
 /// Port of `arma::index_min` — first index of the minimum value.

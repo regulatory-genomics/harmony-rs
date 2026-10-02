@@ -11,6 +11,17 @@
 
 #![allow(clippy::needless_range_loop)]
 
+/// Threshold (in FLOPs) below which matrix products use plain f32 loops
+/// instead of `faer` — faer's parallel dispatch (rayon thread-pool startup
+/// and sync) costs more than the arithmetic itself for small problems.
+pub const FAER_MIN_FLOPS: usize = 10_000_000;
+
+/// Threshold (in elements scanned) below which streaming ops (gemv-style
+/// products, distance loops) use plain f32 loops. These are memory-bound,
+/// so `faer`'s threading already pays off at much smaller sizes than for
+/// gemm.
+pub const FAER_MIN_ELEMS: usize = 2_000_000;
+
 /// Column-major f32 matrix (port of `arma::fmat` usage in harmony.cpp).
 #[derive(Clone, Debug)]
 pub struct FMat {
@@ -229,37 +240,59 @@ impl FMat {
     }
 
     /// Port of `Y.t() * Z` for d×K times d×N → K×N.
+    /// Port of `Y.t() * Z_corr` — d×K transposed times d×N → K×N matrix.
+    /// Large products run through `faer` (SIMD + rayon-parallel), matching
+    /// the reference's OpenBLAS-backed sgemm in role; small ones use plain
+    /// f32 loops. Results agree within the differential gates (see
+    /// docs/parity.md, tolerated variation #1).
     pub fn mul_trans_a(&self, z: &FMat) -> FMat {
         debug_assert_eq!(self.nrows, z.nrows);
-        let mut out = FMat::zeros(self.ncols, z.ncols);
-        for j in 0..z.ncols {
-            let zcol = z.col(j);
-            for g in 0..self.ncols {
-                let ycol = self.col(g);
-                let mut acc = 0.0f32;
-                for i in 0..self.nrows {
-                    acc += ycol[i] * zcol[i];
-                }
-                out.set(g, j, acc);
+        if self.ncols * z.ncols * self.nrows >= FAER_MIN_FLOPS {
+            let a = faer::MatRef::from_column_major_slice(&self.data, self.nrows, self.ncols);
+            let b = faer::MatRef::from_column_major_slice(&z.data, z.nrows, z.ncols);
+            let c: faer::Mat<f32> = a.transpose() * b;
+            let mut out = FMat::zeros(self.ncols, z.ncols);
+            for j in 0..z.ncols {
+                out.col_mut(j).copy_from_slice(c.col_as_slice(j));
             }
+            out
+        } else {
+            let mut out = FMat::zeros(self.ncols, z.ncols);
+            for j in 0..z.ncols {
+                let zcol = z.col(j);
+                for g in 0..self.ncols {
+                    let ycol = self.col(g);
+                    let mut acc = 0.0f32;
+                    for i in 0..self.nrows {
+                        acc += ycol[i] * zcol[i];
+                    }
+                    out.set(g, j, acc);
+                }
+            }
+            out
         }
-        out
     }
 
     /// Port of `Z_orig * weights.t()` — d×N times N×1 → d-length vector.
     pub fn mul_vec(&self, w: &[f32]) -> Vec<f32> {
         debug_assert_eq!(self.ncols, w.len());
-        let mut out = vec![0.0f32; self.nrows];
-        for j in 0..self.ncols {
-            let wj = w[j];
-            if wj == 0.0 {
-                continue;
+        if self.ncols * self.nrows >= FAER_MIN_ELEMS {
+            let a = faer::MatRef::from_column_major_slice(&self.data, self.nrows, self.ncols);
+            let v = faer::MatRef::from_column_major_slice(w, w.len(), 1);
+            let c: faer::Mat<f32> = a * v;
+            let mut out = vec![0.0f32; self.nrows];
+            out.copy_from_slice(c.col_as_slice(0));
+            out
+        } else {
+            let mut out = vec![0.0f32; self.nrows];
+            for j in 0..self.ncols {
+                let wj = w[j];
+                for (i, &v) in self.col(j).iter().enumerate() {
+                    out[i] += v * wj;
+                }
             }
-            for (i, &v) in self.col(j).iter().enumerate() {
-                out[i] += v * wj;
-            }
+            out
         }
-        out
     }
 
     /// Port of `Z_orig.cols(idx) * Rk.cols(idx).t()` — d×m times m×1
