@@ -1,9 +1,6 @@
 //! Cross-validation of `random.rs` against compiled C++ ground truth
-//! (`scripts/cpp_probe.cpp`, g++/libstdc++). The probe output JSON fixtures in
-//! `tests/fixtures/rng_probe_*.json` were generated with:
-//!
-//!   g++ -O2 -std=c++17 scripts/cpp_probe.cpp -o /tmp/cpp_probe
-//!   /tmp/cpp_probe <seed> <n_draws> <shuffle_n> <n_shuffles> > fixture.json
+//! (g++/libstdc++). The probe output JSON fixtures in
+//! `tests/fixtures/rng_probe_*.json` hold the reference draws.
 //!
 //! These tests require an exact match: any divergence in the mt19937 stream,
 //! generate_canonical, or std::shuffle semantics is a parity failure.

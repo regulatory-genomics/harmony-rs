@@ -2,7 +2,8 @@
 //! by the Harmony algorithm.
 //!
 //! Exact-parity notes (validated against a compiled C++ probe, see
-//! `scripts/cpp_probe.cpp` and `tests/rng_reference.rs`):
+//! `tests/rng_reference.rs` and the `tests/fixtures/rng_probe_*.json`
+//! fixtures):
 //!
 //! - `std::mt19937`: C++11-specified Mersenne Twister (w=32, n=624, m=397, r=31,
 //!   a=0x9908b0df, u=11, d=0xffffffff, s=7, b=0x9d2c5680, t=15, c=0xefc60000,
@@ -167,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_first_draws_match_cpp_seed_zero() {
-        // Reference values from scripts/cpp_probe.cpp (g++, libstdc++),
+        // Reference values from a compiled C++ (g++, libstdc++) probe,
         // seed 0 — see tests/fixtures/rng_probe_seed0.json.
         let mut rng = Mt19937::new(0);
         let expected: [u32; 8] = [
@@ -181,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_seed_5489_is_cpp_default() {
-        // std::mt19937 default-seeded (5489) first draws, from cpp_probe.
+        // std::mt19937 default-seeded (5489) first draws, from a C++ probe.
         let mut rng = Mt19937::new(5489);
         let expected: [u32; 4] = [3499211612, 581869302, 3890346734, 3586334585];
         for &e in &expected {

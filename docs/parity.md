@@ -100,7 +100,7 @@ Everything not listed here must be identical.
 ## Acceptance criteria
 
 - 100% of the ported Python tests pass in Rust (`cargo test`).
-- Differential harness (`scripts/differential.py` + `tests/differential.rs`) passes
+- Differential harness (`tests/differential.rs`) passes
   with zero unexplained discrepancies against the installed Python backend.
 - RNG module matches the compiled C++ probe output exactly (raw u32 stream,
   uniform_real draws, shuffles).
