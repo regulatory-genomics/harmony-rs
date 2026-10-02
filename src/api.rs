@@ -1,10 +1,8 @@
-//! Port of the Python wrapper layer: `run_harmony()` in
-//! `../harmonypy/harmonypy/harmony.py` and `compute_lisi()` in
-//! `../harmonypy/harmonypy/lisi.py`.
+//! Public API: `run_harmony()` and `compute_lisi()`.
 //!
 //! Argument normalization (theta/lamb/sigma expansion, nclust default,
-//! batch-of-cell construction with `np.unique` sorted codes, orientation
-//! handling, error messages) mirrors the Python code exactly.
+//! batch-of-cell construction with sorted unique codes, orientation handling,
+//! error messages) matches the reference behavior exactly.
 
 use crate::harmony::core::{Harmony, HarmonyError};
 use crate::lisi::LisiError;

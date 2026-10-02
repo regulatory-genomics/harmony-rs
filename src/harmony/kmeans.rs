@@ -1,10 +1,9 @@
-//! Port of `kmeans_init()` from `../harmonypy/src/harmony.cpp` and the
-//! Armadillo 14.2.2 `arma::kmeans(Y, X, K, keep_existing, 1, false)` call it
-//! makes (via `gmm_diag<eT>::kmeans_wrapper` → `km_iterate<1>`, single-threaded
-//! path, read from the Armadillo 14.2.2 sources).
+//! Port of `kmeans_init()`: replicates the Armadillo 14.2.2
+//! `arma::kmeans(Y, X, K, keep_existing, 1, false)` call (via
+//! `gmm_diag<eT>::kmeans_wrapper` → `km_iterate<1>`, single-threaded path).
 //!
 //! Exact-parity notes:
-//! - The random subset selection follows harmony.cpp exactly, including
+//! - The random subset selection follows the reference exactly, including
 //!   `std::set<unsigned> chosen` (ordered set) and the `prob.max()` /
 //!   `index_min()` (first-minimum) tie-breaking.
 //! - `km_iterate` with max_iter=1 performs exactly one Lloyd pass: assignment

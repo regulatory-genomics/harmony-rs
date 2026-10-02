@@ -1,13 +1,13 @@
-//! Port of the Armadillo `arma::fmat` (MATTYPE) operations used by
-//! `../harmonypy/src/harmony.cpp`.
+//! f32 column-major matrix operations (port of the Armadillo `arma::fmat`
+//! operations used by the algorithm).
 //!
 //! Column-major f32 matrices, mirroring `typedef arma::Mat<float> MATTYPE`.
 //! Only the operations the Harmony algorithm uses are implemented; products
 //! use plain f32 accumulation loops (the reference delegates to OpenBLAS, so
 //! results agree within the differential gates — see docs/parity.md).
 //!
-//! Index-based loops are intentional throughout: they mirror the C++
-//! reference's flat-buffer (column-major) indexing directly.
+//! Index-based loops are intentional throughout: they mirror the reference's
+//! flat-buffer (column-major) indexing directly.
 
 #![allow(clippy::needless_range_loop)]
 

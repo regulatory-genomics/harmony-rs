@@ -1,11 +1,11 @@
-//! Port of `../harmonypy/src/harmony.cpp` — the Harmony batch correction core
-//! (itself a port of the R harmony2 package, using scatter/gather kernels on a
-//! batch_id vector instead of sparse Phi matrices).
+//! The Harmony batch correction core (itself a port of the R harmony2
+//! package, using scatter/gather kernels on a batch_id vector instead of
+//! sparse Phi matrices).
 //!
 //! All state is f32 (MATTYPE = arma::fmat), matching the C++ backend.
 //!
-//! Index-based loops are intentional throughout: they mirror the C++
-//! reference's flat-buffer (column-major) indexing directly.
+//! Index-based loops are intentional throughout: they mirror the reference's
+//! flat-buffer (column-major) indexing directly.
 
 #![allow(clippy::needless_range_loop)]
 

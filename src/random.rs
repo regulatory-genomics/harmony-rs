@@ -1,5 +1,5 @@
-//! Port of C++ `std::mt19937` and the libstdc++ distribution algorithms used by
-//! `../harmonypy/src/harmony.cpp`.
+//! Port of C++ `std::mt19937` and the libstdc++ distribution algorithms used
+//! by the Harmony algorithm.
 //!
 //! Exact-parity notes (validated against a compiled C++ probe, see
 //! `scripts/cpp_probe.cpp` and `tests/rng_reference.rs`):

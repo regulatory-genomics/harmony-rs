@@ -1,5 +1,4 @@
-//! Port of `../harmonypy/tests/test_harmony.py` — 1:1 behavioral parity with
-//! the Python test suite.
+//! Behavioral parity with the reference test suite.
 
 mod common;
 

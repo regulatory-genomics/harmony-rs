@@ -1,5 +1,5 @@
-//! Port of `../harmonypy/tests/test_lisi.py` — golden comparison against the
-//! reference fixture (kd-tree tolerance atol=0.01).
+//! LISI golden comparison against the reference fixture (kd-tree tolerance
+//! atol=0.01).
 
 mod common;
 

@@ -1,17 +1,14 @@
-//! Port of the Python `harmonypy` package v2.0.2 (../harmonypy).
+//! Rust implementation of the Harmony batch-effect correction algorithm for
+//! single-cell data, following the C++/Armadillo backend step-by-step (which
+//! itself follows the R harmony2 package).
 //!
-//! harmonypy is a Rust reimplementation of the Harmony batch-effect correction
-//! algorithm for single-cell data, following the C++ backend in
-//! `../harmonypy/src/harmony.cpp` step-by-step (which itself follows the R
-//! harmony2 package).
-//!
-//! Module mapping (Python/C++ → Rust):
-//! - `harmonypy/harmony.py` (`run_harmony` wrapper) → [`api`]
-//! - `src/harmony.cpp` (Harmony core) → [`harmony::core`]
-//! - `src/harmony.cpp` (`kmeans_init`) → [`harmony::kmeans`]
-//! - `src/lisi.hpp` (LISI) → [`lisi`]
-//! - `std::mt19937` + libstdc++ distributions → [`random`]
-//! - `arma::fmat` operations → [`fmat`]
+//! Module mapping:
+//! - `run_harmony` wrapper → [`api`]
+//! - Harmony core → [`harmony::core`]
+//! - k-means initialization → [`harmony::kmeans`]
+//! - LISI → [`lisi`]
+//! - MT19937 + libstdc++ distributions → [`random`]
+//! - f32 matrix operations → [`fmat`]
 //!
 //! See `docs/parity.md` for the parity contract.
 

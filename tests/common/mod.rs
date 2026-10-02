@@ -1,5 +1,4 @@
-//! Shared test helpers — ports of `read_tsv`, `cols_to_matrix`, and
-//! `pearsonr` from `../harmonypy/tests/test_harmony.py`.
+//! Shared test helpers — `read_tsv`, `cols_to_matrix`, and `pearsonr`.
 //!
 //! Not every helper is used by every test binary; unused ones are allowed.
 

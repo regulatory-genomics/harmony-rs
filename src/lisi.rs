@@ -1,10 +1,8 @@
-//! Port of `../harmonypy/src/lisi.hpp` — the Local Inverse Simpson Index
-//! (C++ implementation replacing the sklearn-based Python version).
+//! Local Inverse Simpson Index (LISI) via a simple kd-tree for
+//! k-nearest-neighbor search, binary search for the beta perplexity
+//! parameter, and Simpson's index over neighbor category probabilities.
 //!
-//! Simple kd-tree for k-nearest-neighbor search, binary search for the beta
-//! perplexity parameter, Simpson's index over neighbor category probabilities.
-//!
-//! Index-based loops are intentional throughout: they mirror the C++
+//! Index-based loops are intentional throughout: they mirror the
 //! reference's flat-buffer (column-major / kd-tree) indexing directly.
 
 #![allow(clippy::needless_range_loop)]
