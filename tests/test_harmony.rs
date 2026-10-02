@@ -4,8 +4,8 @@
 mod common;
 
 use common::{cols_to_matrix, pearsonr, read_tsv, Column};
-use harmonypy::harmony::core::{objective_converged, HarmonyError};
-use harmonypy::{run_harmony, RunHarmonyArgs, ScalarOrVec};
+use harmony::harmony::core::{objective_converged, HarmonyError};
+use harmony::{run_harmony, RunHarmonyArgs, ScalarOrVec};
 use std::collections::HashMap;
 
 fn data_path(name: &str) -> String {
@@ -335,7 +335,7 @@ fn assignment_probabilities(
             dist_mat[j * k + i] = distances[j * k + i] as f32;
         }
     }
-    let dist = harmonypy::fmat::FMat::from_col_major(k, n, dist_mat);
+    let dist = harmony::fmat::FMat::from_col_major(k, n, dist_mat);
     let sig: Vec<f32> = sigma.iter().map(|&v| v as f32).collect();
     // E and O are k x nb, row-major.
     let nb = e.len() / k;
@@ -345,20 +345,20 @@ fn assignment_probabilities(
             emat[b * k + i] = e[i * nb + b] as f32;
         }
     }
-    let em = harmonypy::fmat::FMat::from_col_major(k, nb, emat);
+    let em = harmony::fmat::FMat::from_col_major(k, nb, emat);
     let mut omat = vec![0.0f32; k * nb];
     for b in 0..nb {
         for i in 0..k {
             omat[b * k + i] = o[i * nb + b] as f32;
         }
     }
-    let om = harmonypy::fmat::FMat::from_col_major(k, nb, omat);
+    let om = harmony::fmat::FMat::from_col_major(k, nb, omat);
     let th: Vec<f32> = theta.iter().map(|&v| v as f32).collect();
     let ids: Vec<u32> = batch_ids.iter().map(|&v| v as u32).collect();
 
-    let logits = harmonypy::harmony::core::assignment_logits(&dist, &sig, &em, &om, &th, &ids);
+    let logits = harmony::harmony::core::assignment_logits(&dist, &sig, &em, &om, &th, &ids);
     let mut logits = logits;
-    let normalizers = harmonypy::harmony::core::exponentiate_shifted_logits(&mut logits);
+    let normalizers = harmony::harmony::core::exponentiate_shifted_logits(&mut logits);
     logits.div_rows_by_col_vec(&normalizers);
     logits.data.iter().map(|&v| v as f64).collect()
 }

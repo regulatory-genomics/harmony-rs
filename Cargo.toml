@@ -1,5 +1,5 @@
 [package]
-name = "harmonypy-rs"
+name = "harmony-rs"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
@@ -12,7 +12,7 @@ categories = ["science", "algorithms"]
 repository = "https://github.com"
 
 [lib]
-name = "harmonypy"
+name = "harmony"
 path = "src/lib.rs"
 
 [dependencies]

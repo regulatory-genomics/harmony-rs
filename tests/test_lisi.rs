@@ -4,7 +4,7 @@
 mod common;
 
 use common::read_tsv;
-use harmonypy::compute_lisi;
+use harmony::compute_lisi;
 use std::collections::HashMap;
 
 fn data_path(name: &str) -> String {

@@ -8,7 +8,7 @@
 //! These tests require an exact match: any divergence in the mt19937 stream,
 //! generate_canonical, or std::shuffle semantics is a parity failure.
 
-use harmonypy::Mt19937;
+use harmony::Mt19937;
 use serde_json::Value;
 
 fn load_probe(name: &str) -> Value {

@@ -8,7 +8,7 @@
 mod common;
 
 use common::{cols_to_matrix, read_tsv};
-use harmonypy::{run_harmony, RunHarmonyArgs};
+use harmony::{run_harmony, RunHarmonyArgs};
 use serde_json::Value;
 use std::collections::HashMap;
 

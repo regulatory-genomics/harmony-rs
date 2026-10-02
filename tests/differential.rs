@@ -11,7 +11,7 @@
 mod common;
 
 use common::{cols_to_matrix, pearsonr, read_tsv, Column};
-use harmonypy::{run_harmony, RunHarmonyArgs};
+use harmony::{run_harmony, RunHarmonyArgs};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -87,7 +87,7 @@ fn flat_strings(v: &Value) -> Vec<String> {
 #[allow(clippy::too_many_arguments)]
 fn compare(
     name: &str,
-    result: &harmonypy::HarmonyResult,
+    result: &harmony::HarmonyResult,
     py: &Value,
     n: usize,
     d: usize,
@@ -276,7 +276,7 @@ fn differential_iter2() {
 fn differential_fixed_lamb() {
     let (data_mat, n, d, meta_map) = load_pcs("pbmc_3500_meta.tsv.gz", "pbmc_3500_pcs.tsv.gz");
     let result = run_harmony(&RunHarmonyArgs {
-        lamb: Some(harmonypy::ScalarOrVec::Scalar(1.0)),
+        lamb: Some(harmony::ScalarOrVec::Scalar(1.0)),
         ..RunHarmonyArgs::python_defaults(&data_mat, n, d, &meta_map, vec!["donor".to_string()])
     })
     .expect("run_harmony failed");

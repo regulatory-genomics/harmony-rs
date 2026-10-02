@@ -6,8 +6,8 @@
 #![allow(clippy::needless_range_loop)]
 mod common;
 
-use harmonypy::fmat::FMat;
-use harmonypy::random::Mt19937;
+use harmony::fmat::FMat;
+use harmony::random::Mt19937;
 use std::collections::BTreeSet;
 
 fn data_path(name: &str) -> String {

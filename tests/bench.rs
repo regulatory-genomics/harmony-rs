@@ -6,7 +6,7 @@
 mod common;
 
 use common::{cols_to_matrix, read_tsv};
-use harmonypy::{run_harmony, RunHarmonyArgs};
+use harmony::{run_harmony, RunHarmonyArgs};
 use std::collections::HashMap;
 use std::time::Instant;
 

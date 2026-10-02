@@ -494,7 +494,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmonypy-rs"
+name = "harmony-rs"
 version = "0.1.0"
 dependencies = [
  "csv",
